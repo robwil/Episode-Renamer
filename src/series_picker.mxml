@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:TitleWindow xmlns:mx="http://www.adobe.com/2006/mxml" layout="vertical" width="500" height="350"
+	title="Choose which series you meant..." creationComplete="initApp()">
+	<mx:Metadata>
+		[Event(names="series", type="events.SeriesEvent")]
+	</mx:Metadata>
+	<mx:Script>
+		<![CDATA[
+			import events.SeriesEvent;
+			import mx.collections.ArrayCollection;
+			import mx.managers.PopUpManager;
+			
+			[Bindable]
+			public var seriesData:ArrayCollection;
+			
+			private function initApp():void {
+				seriesData = new ArrayCollection();
+			}
+			
+			private function clickHandler(event:Event):void {
+				var e:SeriesEvent = new SeriesEvent("series", datagrid.selectedItem.seriesid);
+				dispatchEvent(e);
+				PopUpManager.removePopUp(this);
+			}
+		]]>
+	</mx:Script>
+	<mx:Text text="Multiple shows match the name you entered. Please pick the one you want.&#xd;" width="472"/>
+	<mx:DataGrid height="100%" id="datagrid" dataProvider="{seriesData}" width="462" horizontalScrollPolicy="on">
+		<mx:columns>
+			<mx:DataGridColumn width="50" resizable="false" headerText="ID" dataField="seriesid"/>
+			<mx:DataGridColumn headerText="Name" dataField="name"/>
+			<mx:DataGridColumn width="500" headerText="Synopsis" dataField="synopsis"/>
+		</mx:columns>
+	</mx:DataGrid>
+	<mx:Button label="Submit" click="clickHandler(event)"/>
+</mx:TitleWindow>

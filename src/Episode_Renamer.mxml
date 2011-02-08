@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:WindowedApplication width="650" height="400" title="Episode Renamer" xmlns:mx="http://www.adobe.com/2006/mxml" layout="vertical" creationComplete="initApp()" xmlns:net="flash.net.*" viewSourceURL="srcview/index.html">
+	<mx:Script>
+		<![CDATA[
+			import events.SeriesEvent;
+			import mx.managers.PopUpManager;
+			import mx.rpc.events.ResultEvent;
+			import mx.controls.Alert;
+			import mx.collections.ArrayCollection;
+			
+			[Bindable]
+			private var gridData:ArrayCollection;
+			private var globalIndex:int;
+			private var metaData:Object;
+			private var folder:File;
+			private var request:URLRequest;
+			
+			private function browse(event:Event):void {
+				folder = new File();
+                folder.addEventListener(Event.SELECT, process_folder);
+                folder.browseForDirectory("Please select a directory...");
+                // reinitialize variables
+                gridData = new ArrayCollection();
+				globalIndex = 0;
+				metaData = new Array();
+            }
+ 
+            private function process_folder(event:Event):void {
+            	gridData.removeAll();
+                folder_txt.text = folder.nativePath;
+                var files:Array = folder.getDirectoryListing();
+                var file:File;
+                var result:Array;
+                var myPattern:RegExp = /.*(\/|\\)(?P<name>.*)$/;
+                var myPattern2:RegExp = /^[^\.]/;
+                for each (file in files) {
+					result = myPattern.exec(file.nativePath);
+					if (myPattern2.test(result.name)) {
+						gridData.addItem({old: result.name});
+					}
+                }
+            }
+            
+            private function lookup(event:Event):void {
+            	seriesID.text = "loading..."
+            	request = new URLRequest("http://www.thetvdb.com/api/GetSeries.php?seriesname=" + showName.text + "&language=English");
+            	series_loader.load(request);
+            }
+            
+            private function parseSeriesData(event:Event):void {
+            	var xml:XML = XML(event.target.data);
+				var series:XMLList = xml..Series;
+				if (series.length() > 1) {
+					var seriesPicker:series_picker = PopUpManager.createPopUp(this, series_picker, true ) as series_picker;
+      				PopUpManager.centerPopUp(seriesPicker);
+					for each (var serie:XML in series) {
+						seriesPicker.seriesData.addItem({name: serie.SeriesName, seriesid: serie.seriesid, synopsis: serie.Overview});
+					}
+					seriesPicker.addEventListener("series", receiveSeries);
+				} else if (series[0].SeriesName.toLowerCase() == showName.text.toLowerCase()) {
+					seriesID.text = series[0].seriesid;
+					dispatchEpisodeRequest();
+				}
+				
+            }
+            
+            private function receiveSeries(event:SeriesEvent):void {
+            	seriesID.text = event.id;
+            	dispatchEpisodeRequest();
+            }
+            
+            private function dispatchEpisodeRequest():void {
+            	if (globalIndex >= gridData.length) {
+            		globalIndex = 0;
+            		return;
+            	}
+            	var myPattern:RegExp = /.*0?(?P<season>\d+)( |\-|\.)*(e|x|E|X) *0?(?P<episode>\d+).*\.(?P<extension>.+)$/;
+				var result:Array;
+				var episode:Object = gridData.getItemAt(globalIndex);
+				result = myPattern.exec(episode.old);
+				metaData = {season: result.season, episode: result.episode, extension: result.extension};
+				request = new URLRequest("http://www.thetvdb.com/api/A97C434D80F2BEF5/series/" + seriesID.text + "/default/" + result.season + "/" + result.episode + "/english.xml");
+				episode_loader.load(request);
+            }
+                        
+            private function parseEpisodeData(event:Event):void {
+            	var xml:XML = XML(event.target.data);
+				var episode:XMLList = xml..Episode;
+				var newname_str:String;
+				var old:String = gridData.getItemAt(globalIndex).old;
+				if (episode[0].seriesid == seriesID.text) {
+					newname_str = showName.text + " S";
+					if (metaData.season < 10) {
+						newname_str += "0";
+					}
+					newname_str += metaData.season + "E";
+					if (metaData.episode < 10) {
+						newname_str += "0";
+					}
+					newname_str += metaData.episode + " - " + episode[0].EpisodeName + "." + metaData.extension;
+					gridData.setItemAt({old: old, newname: newname_str}, globalIndex);
+				}
+				globalIndex++;
+				dispatchEpisodeRequest();
+            }
+            
+            private function rename(event:Event):void {
+            	var source:File;
+            	var destination:File;
+            	var filename:Object;
+            	for (var i:int = 0; i < gridData.length; i++) {
+            		filename = gridData.getItemAt(i);
+            		source = new File(folder_txt.text + "/" + filename.old);
+            		destination = new File(folder_txt.text + "/" + filename.newname);
+            		try {
+    					source.moveTo(destination, false);
+    					filename.renamed = "success";
+    					gridData.setItemAt(filename, i);
+					} catch (error:Error) {
+    					filename.renamed = error.message;
+					}
+            	}
+            }
+
+			private function showAlert(str:String):void {
+				var alert:Alert;
+				alert = Alert.show(str, "Error");
+			}
+			
+			private function initApp():void {
+				gridData = new ArrayCollection();
+				globalIndex = 0;
+				metaData = new Array();
+			}
+		]]>
+	</mx:Script>
+	<net:URLLoader id="series_loader" complete="parseSeriesData(event)" ioError="showAlert('There was a problem downloading the series information. Check the series name.')"/>
+	<net:URLLoader id="episode_loader" complete="parseEpisodeData(event)" ioError="showAlert('There was a problem downloading the episode information. Check the series ID.')"/>
+	<mx:Canvas width="452" height="105">
+		<mx:TextInput x="92" y="10" width="261" id="folder_txt"/>
+		<mx:Button x="361" y="10" label="Browse..." click="browse(event)"/>
+		<mx:Label x="10" y="12" text="Directory:"/>
+		<mx:Label x="10" y="42" text="Show Name:"/>
+		<mx:TextInput x="92" y="40" id="showName"/>
+		<mx:Label x="292" y="42" text="Series ID:"/>
+		<mx:TextInput x="361" y="40" width="81" id="seriesID" />
+		<mx:Button x="92" y="70" label="Look Up Episode Information" click="lookup(event)"/>
+	</mx:Canvas>
+	<mx:DataGrid dataProvider="{gridData}" width="100%" height="100%" editable="true">
+		<mx:columns>
+			<mx:DataGridColumn headerText="Old Name" dataField="old" editable="false"/>
+			<mx:DataGridColumn headerText="New Name" dataField="newname" editable="true"/>
+			<mx:DataGridColumn headerText="Renamed?" dataField="renamed" editable="false" width="100"/>
+		</mx:columns>
+	</mx:DataGrid>
+	<mx:Button label="Confirm Rename" click="rename(event)"/>
+</mx:WindowedApplication>
